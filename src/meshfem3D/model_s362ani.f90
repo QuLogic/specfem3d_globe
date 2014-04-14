@@ -32,7 +32,7 @@
 !
 ! In this model, radial anisotropy is confined to the uppermost mantle.
 ! The model (and the corresponding mesh) incorporate
-! tomography on the 650~km and 410~km discontinuities in the 1D reference model REF.
+! tomography on the 650-km and 410-km discontinuities in the 1D reference model REF.
 !
 ! s362wmani: A version of S362ANI with anisotropy allowed throughout the mantle.
 !
@@ -42,197 +42,22 @@
 ! calculated using REF as the 1D reference model.
 !--------------------------------------------------------------------------------------------------
 
-  module model_s362ani_par
-
-  ! used for 3D Harvard models s362ani, s362wmani, s362ani_prem and s2.9ea
-  integer, parameter :: maxker=200
-  integer, parameter :: maxl=72
-  integer, parameter :: maxcoe=2000
-  integer, parameter :: maxver=1000
-  integer, parameter :: maxhpa=2
-
-  real(kind=4),dimension(:,:),allocatable :: conpt,xlaspl,xlospl,radspl,coe
-  real(kind=4),dimension(:),allocatable :: vercof,vercofd
-
-  real(kind=4),dimension(:,:),allocatable :: ylmcof
-  real(kind=4),dimension(:),allocatable :: wk1,wk2,wk3
-
-  integer, dimension(maxhpa) :: lmxhpa,itypehpa,numcoe,nconpt
-
-  integer,dimension(:,:),allocatable :: itpspl,iconpt
-  integer,dimension(:),allocatable :: ihpakern,ivarkern
-
-  integer :: iver
-  integer :: numker
-  integer :: numhpa,numcof
-  integer :: ihpa,lmax,nylm
-
-  character(len=80) :: kerstr
-  character(len=80) :: refmdl
-  character(len=40) :: varstr(maxker)
-  character(len=80) :: hsplfl(maxhpa)
-  character(len=40) :: dskker(maxker)
-
-  end module model_s362ani_par
-
-!
-!--------------------------------------------------------------------------------------------------
-!
-
-  subroutine model_s362ani_broadcast(myrank,THREE_D_MODEL)
-
-! standard routine to setup model
-
-  use model_s362ani_par
-  use constants
-
-  implicit none
-
-  integer :: myrank
-  integer :: THREE_D_MODEL
-  integer :: ier
-
-  ! allocates model arrays
-  allocate(conpt(maxver,maxhpa), &
-          xlaspl(maxcoe,maxhpa), &
-          xlospl(maxcoe,maxhpa), &
-          radspl(maxcoe,maxhpa), &
-          coe(maxcoe,maxker), &
-          vercof(maxker), &
-          vercofd(maxker), &
-          ylmcof((maxl+1)**2,maxhpa), &
-          wk1(maxl+1), &
-          wk2(maxl+1), &
-          wk3(maxl+1), &
-          itpspl(maxcoe,maxhpa), &
-          iconpt(maxver,maxhpa), &
-          ihpakern(maxker), &
-          ivarkern(maxker), &
-          stat=ier)
-  if( ier /= 0 ) call exit_MPI(myrank,'error allocating s362ani arrays')
-
-  ! master process
-  if(myrank == 0) call read_model_s362ani(THREE_D_MODEL,THREE_D_MODEL_S362ANI,THREE_D_MODEL_S362WMANI, &
-                          THREE_D_MODEL_S362ANI_PREM,THREE_D_MODEL_S29EA)
-
-  call bcast_all_singlei(numker)
-  call bcast_all_singlei(numhpa)
-  call bcast_all_singlei(ihpa)
-
-  call bcast_all_i(lmxhpa,maxhpa)
-  call bcast_all_i(itypehpa,maxhpa)
-  call bcast_all_i(ihpakern,maxker)
-  call bcast_all_i(numcoe,maxhpa)
-  call bcast_all_i(ivarkern,maxker)
-  call bcast_all_i(itpspl,maxcoe*maxhpa)
-
-  call bcast_all_r(xlaspl,maxcoe*maxhpa)
-  call bcast_all_r(xlospl,maxcoe*maxhpa)
-  call bcast_all_r(radspl,maxcoe*maxhpa)
-  call bcast_all_r(coe,maxcoe*maxker)
-
-  call bcast_all_ch_array(hsplfl,maxhpa,80)
-  call bcast_all_ch_array(dskker,maxker,40)
-
-  call bcast_all_ch(kerstr,80)
-  call bcast_all_ch(refmdl,80)
-
-  call bcast_all_ch_array(varstr,maxker,40)
-
-  end subroutine model_s362ani_broadcast
-
-!
-!-------------------------------------------------------------------------------------------------
-!
-
-  subroutine read_model_s362ani(THREE_D_MODEL, &
-              THREE_D_MODEL_S362ANI,THREE_D_MODEL_S362WMANI, &
-              THREE_D_MODEL_S362ANI_PREM,THREE_D_MODEL_S29EA)
-
-  use model_s362ani_par
-
-  implicit none
-
-  integer THREE_D_MODEL,THREE_D_MODEL_S362ANI
-  integer THREE_D_MODEL_S362WMANI
-  integer THREE_D_MODEL_S362ANI_PREM,THREE_D_MODEL_S29EA
-
-  integer lu
-  character(len=128) modeldef
-  logical exists
-  integer numvar
-  integer ierror
-
-  lu=1                    ! --- log unit: input 3-D model
-  if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI) then
-    modeldef='DATA/s362ani/S362ANI'
-  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362WMANI) then
-    modeldef='DATA/s362ani/S362WMANI'
-  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI_PREM) then
-    modeldef='DATA/s362ani/S362ANI_PREM'
-  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S29EA) then
-    modeldef='DATA/s362ani/S2.9EA'
-  else
-    stop 'unknown 3D model in read_model_s362ani'
-  endif
-  inquire(file=modeldef,exist=exists)
-  if(exists) then
-    call gt3dmodl(lu,modeldef, &
-                  maxhpa,maxker,maxcoe, &
-                  numhpa,numker,numcoe,lmxhpa, &
-                  ihpakern,itypehpa,coe, &
-                  itpspl,xlaspl,xlospl,radspl, &
-                  numvar,ivarkern,varstr, &
-                  refmdl,kerstr,hsplfl,dskker,ierror)
-  else
-    write(6,"('model ',a,' does not exist')") modeldef(1:len_trim(modeldef))
-    stop 'model does not exist in s362_ani'
-  endif
-
-  !  check arrays
-  if(numker > maxker) stop 'numker > maxker'
-  do ihpa=1,numhpa
-    if(itypehpa(ihpa) == 1) then
-      if(lmxhpa(ihpa) > maxl) stop 'lmxhpa(ihpa) > maxl'
-    else if(itypehpa(ihpa) == 2) then
-      if(numcoe(ihpa) > maxcoe) stop 'numcoe(ihpa) > maxcoe'
-    else
-      stop 'problem with itypehpa'
-    endif
-  enddo
-
-  end subroutine read_model_s362ani
-
-!
-!-------------------------------------------------------------------------------------------------
-!
-
   subroutine evradker(depth,string,nker,vercof,dvercof,ierror)
 
-  implicit none
-
-  integer :: nker,ierror
-
-  real(kind=4) :: chebyshev(100)
-  real(kind=4) :: chebyshev2(100)
-  real(kind=4) :: vercof(nker)
-  real(kind=4) :: dvercof(nker)
-  real(kind=4) :: splpts(100)
-
+  dimension chebyshev(100)
+  dimension chebyshev2(100)
+  dimension vercof(nker)
+  dimension dvercof(nker)
   character(len=80) string
-
   logical upper,upper_650
   logical lower,lower_650
+  parameter (r0=6371)
+  parameter (rmoho=6371.0-24.4)
+  parameter (r670=6371.-670.)
+  parameter (r650=6371.-650.)
+  parameter (rcmb=3480.0)
 
-  real(kind=4), parameter :: r0=6371.
-  real(kind=4), parameter :: rmoho=6371.0 - 24.4  ! subtracting the thickness here
-  real(kind=4), parameter :: r670=6371. - 670.    ! subtracting the thickness here
-  real(kind=4), parameter :: r650=6371. - 650.    ! subtracting the thickness here
-  real(kind=4), parameter :: rcmb=3480.0
-
-  integer :: i,nspl,nskip,nlower,nupper,iker,lstr
-
-  real(kind=4) :: u,u2,ddep,radius2,radius,depth
+  dimension splpts(100)
 
   ierror=0
   lstr=len_trim(string)
@@ -242,24 +67,24 @@
   radius2=r0-depth+ddep
   upper=.false.
   lower=.false.
-  if(radius > rcmb.and.radius < r670) then
+  if(radius>rcmb.and.radius<r670) then
   lower=.true.
-  else if(radius >= r670.and.radius < rmoho) then
+  else if(radius>=r670.and.radius<rmoho) then
   upper=.true.
   endif
   upper_650=.false.
   lower_650=.false.
-  if(radius > rcmb.and.radius < r650) then
+  if(radius>rcmb.and.radius<r650) then
   lower_650=.true.
-  else if(radius >= r650.and.radius < rmoho) then
+  else if(radius>=r650.and.radius<rmoho) then
   upper_650=.true.
   endif
   do iker=1,nker
   vercof(iker)=0.
   dvercof(iker)=0.
   enddo
-
-  if(string(1:16) == 'WDC+SPC_U4L8CHEB') then
+!
+  if(string(1:16)=='WDC+SPC_U4L8CHEB') then
   nupper=5
   nlower=9
   nskip=2
@@ -285,10 +110,10 @@
     enddo
     call chebyfun(u2,13,chebyshev2)
     do i=1+nskip+nupper,nskip+nupper+nlower
-      dvercof(i)=(chebyshev2(i-nskip-nupper) - chebyshev(i-nskip-nupper))/ddep
+      dvercof(i)=(chebyshev2(i-nskip-nupper)- chebyshev(i-nskip-nupper))/ddep
     enddo
   endif
-  else if(string(1:13) == 'WDC+SHSVWM20A') then
+  else if(string(1:13)=='WDC+SHSVWM20A') then
   nspl=20
   splpts(1)=0.
   splpts(2)=50.
@@ -316,7 +141,7 @@
     dvercof(i)=dvercof(i-20)
   enddo
   vercof(1)=1.
-  else if(string(1:16) == 'WDC+XBS_362_U6L8') then
+  else if(string(1:16)=='WDC+XBS_362_U6L8') then
   if(upper) then
    nspl=6
    splpts(1)=24.4
@@ -341,7 +166,7 @@
   vercof(1)=1.
 !        vercof(16)=1.
 !        vercof(17)=1.
-!      else if(string(1:21) == 'WDC+ANI_362_U6L8_TOPO') then
+!      else if(string(1:21)=='WDC+ANI_362_U6L8_TOPO') then
 !        if(upper) then
 !         nspl=6
 !         splpts(1)=24.4
@@ -372,8 +197,11 @@
 !        vercof(23)=1.
 !        vercof(24)=1.
 !        vercof(25)=1.
-  else if( (string(1:lstr) == 'WDC+ANI_362_U6L8'.and.lstr == 16) &
-      .or. (string(1:lstr) == 'WDC+ANI_362_U6L8_TOPO'.and.lstr == 21) ) then
+  else if( &
+       (string(1:lstr)=='WDC+ANI_362_U6L8'.and.lstr==16) &
+       .or. &
+           (string(1:lstr)=='WDC+ANI_362_U6L8_TOPO'.and.lstr==21) &
+       ) then
   if(upper) then
    nspl=6
    splpts(1)=24.4
@@ -402,7 +230,7 @@
   vercof(1)=1.
   vercof(22)=1.
   vercof(23)=1.
-  else if(string(1:lstr) == 'WDC+WM_362_U6L8'.and.lstr == 15) then
+  else if(string(1:lstr)=='WDC+WM_362_U6L8'.and.lstr==15) then
   if(upper) then
    nspl=6
    splpts(1)=24.4
@@ -436,8 +264,11 @@
   vercof(30)=1.
   vercof(31)=1.
   vercof(32)=1.
-  else if( (string(1:lstr) == 'WDC+ANI_362_U6L8_650'.and.lstr == 20) &
-      .or. (string(1:lstr) == 'WDC+ANI_362_U6L8_TOPO_650'.and.lstr == 25) ) then
+  else if( &
+     (string(1:lstr)=='WDC+ANI_362_U6L8_650'.and.lstr==20) &
+     .or. &
+         (string(1:lstr)=='WDC+ANI_362_U6L8_TOPO_650'.and.lstr==25) &
+     ) then
   if(upper_650) then
    nspl=6
    splpts(1)=24.4
@@ -466,7 +297,8 @@
   vercof(1)=1.
   vercof(22)=1.
   vercof(23)=1.
-  else if(string(1:lstr) == 'WDC+WM_362_U6L8_650' .and.lstr == 19) then
+  else if(string(1:lstr)=='WDC+WM_362_U6L8_650' &
+       .and.lstr==19) then
   if(upper_650) then
    nspl=6
    splpts(1)=24.4
@@ -500,7 +332,7 @@
   vercof(30)=1.
   vercof(31)=1.
   vercof(32)=1.
-  else if(string(1:lstr) == 'WDC+U8L8_650'.and.lstr == 12) then
+  else if(string(1:lstr)=='WDC+U8L8_650'.and.lstr==12) then
   if(upper_650) then
    nspl=8
    splpts(1)=24.4
@@ -536,7 +368,7 @@
   vercof(34)=1.
   vercof(35)=1.
   vercof(36)=1.
-  else if(string(1:lstr) == 'WDC+U8L8_670'.and.lstr == 12) then
+  else if(string(1:lstr)=='WDC+U8L8_670'.and.lstr==12) then
   if(upper) then
    nspl=8
    splpts(1)=24.4
@@ -572,8 +404,11 @@
   vercof(34)=1.
   vercof(35)=1.
   vercof(36)=1.
-  else if( (string(1:lstr) == 'WDC+U8L8_I1D_650'.and.lstr == 16) &
-      .or. (string(1:lstr) == 'WDC+U8L8_I3D_650'.and.lstr == 16) ) then
+  else if( &
+      (string(1:lstr)=='WDC+U8L8_I1D_650'.and.lstr==16) &
+      .or. &
+      (string(1:lstr)=='WDC+U8L8_I3D_650'.and.lstr==16) &
+      ) then
   if(upper_650) then
    nspl=8
    splpts(1)=24.4
@@ -625,8 +460,8 @@
   vercof(34)=1.
   vercof(35)=1.
   vercof(36)=1.
-  else if((string(1:lstr) == 'WDC+I1D_650'.and.lstr == 11).or. &
-          (string(1:lstr) == 'WDC+I3D_650'.and.lstr == 11)) then
+  else if((string(1:lstr)=='WDC+I1D_650'.and.lstr==11).or. &
+          (string(1:lstr)=='WDC+I3D_650'.and.lstr==11)) then
   if(upper_650) then
    nspl=8
    splpts(1)=24.4
@@ -694,7 +529,7 @@
   vercof(34)=1.
   vercof(35)=1.
   vercof(36)=1.
-  else if(string(1:lstr) == 'V16A4_V7A4'.and.lstr == 10) then
+  else if(string(1:lstr)=='V16A4_V7A4'.and.lstr==10) then
   if(upper_650) then
    nspl=8
    splpts(1)=24.4
@@ -738,31 +573,24 @@
   stop
   endif
 
-  end subroutine evradker
+  end
 
-!
-!-------------------------------------------------------------------------------------------------
-!
+! ---
 
   subroutine chebyfun(u,kmax,f)
 
-  implicit none
+  dimension chebycoeff(0:13),f(0:kmax)
 
-  integer :: kmax
-
-  real(kind=4) :: chebycoeff(0:13),f(0:kmax),u
-
-  integer :: k
-
-  real(kind=4) :: twou
-
-  data chebycoeff / &
+  data  chebycoeff / &
    0.70710678118655,1.2247448713916,1.0350983390135,1.0145993123918, &
    1.00803225754840,1.0050890913907,1.0035149493262,1.0025740068320, &
    1.00196657023780,1.0015515913133,1.0012554932754,1.0010368069141, &
    1.00087070107920,1.0007415648034 /
 
-  if(kmax > 13) stop ' kmax exceeds the limit in chebyfun'
+  if(kmax>13)then
+   write(*,"(' kmax exceeds the limit in chebyfun')")
+   stop
+  endif
 
   f(0)=1.0
   f(1)=u
@@ -776,82 +604,50 @@
    f(k)=f(k)*chebycoeff(k)
   enddo
 
-  end subroutine chebyfun
-
-!
-!-------------------------------------------------------------------------------------------------
-!
-
+  end
 
   subroutine gt3dmodl(lu,targetfile, &
-                      maxhpa,maxker,maxcoe, &
-                      numhpa,numker,numcoe,lmxhpa, &
-                      ihpakern,itypehpa,coe, &
-                      itpspl,xlatspl,xlonspl,radispl, &
-                      numvar,ivarkern,varstr, &
-                      refmdl,kerstr,hsplfl,dskker,ierror)
-
-  implicit none
-
-  integer, parameter :: mxhpar=2
-  integer, parameter :: mxkern=200
-  integer, parameter :: mxcoef=2000
-
-  character(len=80) refmodel
-  character(len=80) kernstri
-  character(len=40) desckern(mxkern)
-  character(len=80) hsplfile(mxhpar)
-
-  integer ihorpar(mxkern)
-  integer ityphpar(mxhpar)
-  integer ixlspl(mxcoef,mxhpar)
-  integer lmaxhor(mxhpar)
-  integer ncoefhor(mxhpar)
-
-  real(kind=4) coef(mxcoef,mxkern)
-  real(kind=4) xlaspl(mxcoef,mxhpar)
-  real(kind=4) xlospl(mxcoef,mxhpar)
-  real(kind=4) xraspl(mxcoef,mxhpar)
-
-  character(len=128) targetfile
-
-  integer numhpa,numker,maxhpa,maxker,maxcoe
-
-  integer numcoe(maxhpa)
-  integer lmxhpa(maxhpa)
-  integer ihpakern(maxker)
-  integer itypehpa(maxhpa)
-  integer itpspl(maxcoe,maxhpa)
-  integer ivarkern(maxker)
-
-  real(kind=4) coe(maxcoe,maxker)
-  real(kind=4) xlatspl(maxcoe,maxhpa)
-  real(kind=4) xlonspl(maxcoe,maxhpa)
-  real(kind=4) radispl(maxcoe,maxhpa)
-
+      maxhpa,maxker,maxcoe, &
+      numhpa,numker,numcoe,lmxhpa, &
+      ihpakern,itypehpa,coe, &
+      itpspl,xlatspl,xlonspl,radispl, &
+      numvar,ivarkern,varstr, &
+      refmdl,kerstr,hsplfl,dskker,ierror)
+!
+  character(len=80) targetfile
+  integer numhpa
+  integer numker
+  dimension numcoe(maxhpa)
+  dimension lmxhpa(maxhpa)
+  dimension ihpakern(maxker)
+  dimension itypehpa(maxhpa)
+  dimension coe(maxcoe,maxker)
+  dimension itpspl(maxcoe,maxhpa)
+  dimension xlatspl(maxcoe,maxhpa)
+  dimension xlonspl(maxcoe,maxhpa)
+  dimension radispl(maxcoe,maxhpa)
   character(len=80) refmdl
   character(len=80) kerstr
   character(len=80) hsplfl(maxhpa)
   character(len=40) dskker(maxker)
+
   character(len=40) string
   character(len=40) varstr(maxker)
+  dimension ivarkern(maxker)
+  integer numvar
 
-  integer numvar,ierror,lu,nhorpar,nmodkern,i,j,lstr,k
-
+  include '3dmodl.h'
+!
   ierror=0
-  call rd3dmodl(lu,targetfile,ierror, &
-    nmodkern,nhorpar,ityphpar, &
-    ihorpar,lmaxhor,ncoefhor, &
-    xlaspl,xlospl,xraspl,ixlspl,coef, &
-    hsplfile,refmodel,kernstri,desckern)
-
-  if(nhorpar <= maxhpa) then
+  call rd3dmodl(lu,targetfile,ierror)
+!
+  if(nhorpar<=maxhpa) then
   numhpa=nhorpar
   else
   ierror=ierror+1
   endif
-
-  if(nmodkern <= maxker) then
+!
+  if(nmodkern<=maxker) then
   numker=nmodkern
   else
   ierror=ierror+1
@@ -862,7 +658,9 @@
   dskker(i)=desckern(i)
   do j=1,ncoefhor(ihpakern(i))
     coe(j,i)=coef(j,i)
-!   if(j == 1) write(6,"(e12.4)") coe(j,i)
+!   if(j==1) then
+!     write(6,"(e12.4)") coe(j,i)
+!   endif
   enddo
   enddo
 
@@ -870,7 +668,7 @@
   numcoe(i)=ncoefhor(i)
   lmxhpa(i)=lmaxhor(i)
   itypehpa(i)=ityphpar(i)
-  if(itypehpa(i) == 2) then
+  if(itypehpa(i)==2) then
     do j=1,ncoefhor(i)
       itpspl(j,i)=ixlspl(j,i)
       xlatspl(j,i)=xlaspl(j,i)
@@ -886,16 +684,16 @@
   string=dskker(i)
   lstr=len_trim(string)
   j=1
-  do while(string(j:j) /= ','.and.j < lstr)
+  do while(string(j:j)/=','.and.j<lstr)
     j=j+1
   enddo
   ivarkern(i)=0
   do k=1,numvar
-    if(string(1:j) == varstr(k)(1:j)) then
+    if(string(1:j)==varstr(k)(1:j)) then
       ivarkern(i)=k
     endif
   enddo
-  if(ivarkern(i) == 0) then
+  if(ivarkern(i)==0) then
     numvar=numvar+1
     varstr(numvar)=string(1:j)
     ivarkern(i)=numvar
@@ -905,137 +703,100 @@
   refmdl=refmodel
   kerstr=kernstri
 
-  end subroutine gt3dmodl
-
-!
-!-------------------------------------------------------------------------------------------------
-!
+  end
 
 
-  subroutine rd3dmodl(lu,filename,ierror, &
-    nmodkern,nhorpar,ityphpar, &
-    ihorpar,lmaxhor,ncoefhor, &
-    xlaspl,xlospl,xraspl,ixlspl,coef, &
-    hsplfile,refmodel,kernstri,desckern)
+  subroutine rd3dmodl(lu,filename,ierror)
 
-  use constants
-
-  implicit none
-
-  integer, parameter :: mxhpar=2
-  integer, parameter :: mxkern=200
-  integer, parameter :: mxcoef=2000
-
-  character(len=80) refmodel
-  character(len=80) kernstri
-  character(len=40) desckern(mxkern)
-  character(len=80) hsplfile(mxhpar)
-
-  integer ihorpar(mxkern)
-  integer ityphpar(mxhpar)
-  integer ixlspl(mxcoef,mxhpar)
-  integer lmaxhor(mxhpar)
-  integer ncoefhor(mxhpar)
-
-  real(kind=4) coef(mxcoef,mxkern)
-  real(kind=4) xlaspl(mxcoef,mxhpar)
-  real(kind=4) xlospl(mxcoef,mxhpar)
-  real(kind=4) xraspl(mxcoef,mxhpar)
-
-  character(len=128) filename
+  character(len=*) filename
 
   character(len=128) string
   character(len=128) substr
 
-  integer :: lu,ierror
+  include '3dmodl.h'
 
-  integer :: ncoef,i,ihor,ifst,ilst,ifst1,ios,lstr,nmodkern,idummy,nhorpar,lmax
-
-  open(lu,file=filename,status='old',action='read',iostat=ios)
-  if ( ios /= 0 ) then
-    write(IMAIN,*) 'error opening "', trim(filename), '": ', ios
-    call flush_IMAIN()
-    call exit_MPI(0, 'error in model s362ani')
+  open(lu,file=filename,iostat=ios)
+  if(ios/=0) then
+  stop 'error opening 3-d model'
   endif
-
-  do while (ios == 0)
+  do while (ios==0)
   read(lu,"(a)",iostat=ios) string
   lstr=len_trim(string)
-  if(ios == 0) then
-    if(string(1:16) == 'REFERENCE MODEL:') then
+  if(ios==0) then
+    if(string(1:16)=='REFERENCE MODEL:') then
       substr=string(17:lstr)
       ifst=1
       ilst=len_trim(substr)
-      do while (substr(ifst:ifst) == ' ' .and. ifst < ilst)
+      do while (substr(ifst:ifst)==' '.and.ifst<ilst)
         ifst=ifst+1
       enddo
-      if(ilst-ifst <= 0) then
+      if(ilst-ifst<=0) then
         stop 'error reading model 1'
       else
         refmodel=substr(ifst:ilst)
       endif
-    else if(string(1:11) == 'KERNEL SET:') then
+    else if(string(1:11)=='KERNEL SET:') then
       substr=string(12:len_trim(string))
       ifst=1
       ilst=len_trim(substr)
-      do while (substr(ifst:ifst) == ' ' .and. ifst < ilst)
+      do while (substr(ifst:ifst)==' '.and.ifst<ilst)
         ifst=ifst+1
       enddo
-      if(ilst-ifst <= 0) then
+      if(ilst-ifst<=0) then
         stop 'error reading model 2'
       else
         kernstri=substr(ifst:ilst)
       endif
-    else if(string(1:25) == 'RADIAL STRUCTURE KERNELS:') then
+    else if(string(1:25)=='RADIAL STRUCTURE KERNELS:') then
       substr=string(26:len_trim(string))
       read(substr,*,iostat=ierror) nmodkern
-      if(ierror /= 0) then
+      if(ierror/=0) then
         stop 'error reading model 3'
       endif
-    else if(string(1:4) == 'DESC'.and.string(9:9) == ':') then
+    else if(string(1:4)=='DESC'.and.string(9:9)==':') then
       read(string(5:8),"(i4)") idummy
       substr=string(10:len_trim(string))
       ifst=1
       ilst=len_trim(substr)
-      do while (substr(ifst:ifst) == ' '.and.ifst < ilst)
+      do while (substr(ifst:ifst)==' '.and.ifst<ilst)
         ifst=ifst+1
       enddo
-      if(ilst-ifst <= 0) then
+      if(ilst-ifst<=0) then
         stop 'error reading model 4'
       else
         desckern(idummy)=substr(ifst:ilst)
       endif
-    else if(string(1:29) == 'HORIZONTAL PARAMETERIZATIONS:') then
+    else if(string(1:29)=='HORIZONTAL PARAMETERIZATIONS:') then
       substr=string(30:len_trim(string))
       read(substr,*,iostat=ierror) nhorpar
-      if(ierror /= 0) then
+      if(ierror/=0) then
         stop 'error reading model 5'
       endif
-    else if(string(1:4) == 'HPAR'.and.string(9:9) == ':') then
+    else if(string(1:4)=='HPAR'.and.string(9:9)==':') then
       read(string(5:8),"(i4)") idummy
       ifst=10
       ilst=len_trim(string)
-      do while (string(ifst:ifst) == ' '.and.ifst < ilst)
+      do while (string(ifst:ifst)==' '.and.ifst<ilst)
         ifst=ifst+1
       enddo
-      if(ilst-ifst <= 0) then
+      if(ilst-ifst<=0) then
         stop 'error reading model 6'
-      else if(string(ifst:ifst+19) == 'SPHERICAL HARMONICS,') then
+      else if(string(ifst:ifst+19)=='SPHERICAL HARMONICS,') then
         substr=string(20+ifst:len_trim(string))
         read(substr,*) lmax
         ityphpar(idummy)=1
         lmaxhor(idummy)=lmax
         ncoefhor(idummy)=(lmax+1)**2
-      else if(string(ifst:ifst+17) == 'SPHERICAL SPLINES,') then
+      else if(string(ifst:ifst+17)=='SPHERICAL SPLINES,') then
         ifst1=ifst+18
         ifst=len_trim(string)
         ilst=len_trim(string)
-        do while(string(ifst:ifst) /= ',')
+        do while(string(ifst:ifst)/=',')
           ifst=ifst-1
         enddo
         read(string(ifst+1:ilst),*) ncoef
         substr=string(ifst1:ifst-1)
-        do while (string(ifst1:ifst1) == ' '.and.ifst1 < ifst)
+        do while (string(ifst1:ifst1)==' '.and.ifst1<ifst)
           ifst1=ifst1+1
         enddo
         hsplfile(idummy)=string(ifst1:ifst-1)
@@ -1043,10 +804,11 @@
         lmaxhor(idummy)=0
         ncoefhor(idummy)=ncoef
         do i=1,ncoef
-          read(lu,*) ixlspl(i,idummy),xlaspl(i,idummy),xlospl(i,idummy),xraspl(i,idummy)
+          read(lu,*) ixlspl(i,idummy),xlaspl(i,idummy), &
+             xlospl(i,idummy),xraspl(i,idummy)
         enddo
       endif
-    else if(string(1:4) == 'STRU'.and.string(9:9) == ':') then
+    else if(string(1:4)=='STRU'.and.string(9:9)==':') then
       read(string(5:8),"(i4)") idummy
       substr=string(10:len_trim(string))
       read(substr,*) ihor
@@ -1058,122 +820,134 @@
   enddo
   close(lu)
 
-  end subroutine rd3dmodl
+  end
 
+
+  subroutine splcon(xlat,xlon,nver,verlat,verlon,verrad, &
+                    ncon,icon,con)
+  dimension verlat(1)
+  dimension verlon(1)
+  dimension verrad(1)
+  dimension icon(1)
+  dimension con(1)
 !
-!-------------------------------------------------------------------------------------------------
+  real*8 dd
+  real*8 rn
+  real*8 dr
+  real*8 xrad
+  real*8 ver8
+  real*8 xla8
 !
-
-  subroutine splcon(xlat,xlon,nver,verlat,verlon,verrad,ncon,icon,con)
-
-  use constants
-
-  implicit none
-
-  integer, intent(in) :: nver
-  integer, intent(out) :: ncon
-
-! Daniel Peter: original define
-!
-!  real(kind=4) verlat(1)
-!  real(kind=4) verlon(1)
-!  real(kind=4) verrad(1)
-!
-!  integer icon(1)
-!  real(kind=4) con(1)
-
-! Daniel Peter: avoiding out-of-bounds errors
-  real(kind=4), intent(in) :: verlat(nver)
-  real(kind=4), intent(in) :: verlon(nver)
-  real(kind=4), intent(in) :: verrad(nver)
-
-  integer, parameter :: maxver=1000
-  integer, intent(out) :: icon(maxver)
-  real(kind=4), intent(out) :: con(maxver)
-
-  double precision dd
-  double precision rn
-  double precision dr
-  double precision ver8
-  double precision xla8
-
-  integer :: iver
-  real(kind=4) :: xlat,xlon
-
+  xrad=3.14159265358979/180.d0
   ncon=0
-
   do iver=1,nver
-    if(xlat > verlat(iver)-2.*verrad(iver)) then
-      if(xlat < verlat(iver)+2.*verrad(iver)) then
-        ver8=DEGREES_TO_RADIANS*(verlat(iver))
-        xla8=DEGREES_TO_RADIANS*(xlat)
-        dd=sin(ver8)*sin(xla8) + cos(ver8)*cos(xla8)* cos(DEGREES_TO_RADIANS*(xlon-verlon(iver)))
-        dd=acos(dd) * RADIANS_TO_DEGREES
-        if(dd > (verrad(iver))*2.d0) then
+  if(xlat>verlat(iver)-2.*verrad(iver)) then
+    if(xlat<verlat(iver)+2.*verrad(iver)) then
+      ver8=xrad*(verlat(iver))
+      xla8=xrad*(xlat)
+      dd=sin(ver8)*sin(xla8)
+      dd=dd+cos(ver8)*cos(xla8)* &
+           cos(xrad*(xlon-verlon(iver)))
+      dd=acos(dd)/xrad
+      if(dd>(verrad(iver))*2.d0) then
+      else
+        ncon=ncon+1
+        icon(ncon)=iver
+        rn=dd/(verrad(iver))
+        dr=rn-1.d0
+        if(rn<=1.d0) then
+          con(ncon)=(0.75d0*rn-1.5d0)*(rn**2)+1.d0
+        else if(rn>1.d0) then
+          con(ncon)=((-0.25d0*dr+0.75d0)*dr-0.75d0)*dr+0.25d0
         else
-          ncon=ncon+1
-
-!! DK DK added this safety test
-          if(ncon > maxver) stop 'error: ncon > maxver in splcon()'
-
-          icon(ncon)=iver
-          rn=dd/(verrad(iver))
-          dr=rn-1.d0
-          if(rn <= 1.d0) then
-            con(ncon)=(0.75d0*rn-1.5d0)*(rn**2)+1.d0
-          else if(rn > 1.d0) then
-            con(ncon)=((-0.25d0*dr+0.75d0)*dr-0.75d0)*dr+0.25d0
-          else
-            con(ncon)=0.
-          endif
+          con(ncon)=0.
         endif
       endif
     endif
+  endif
   enddo
 
-  end subroutine splcon
+  end
 
-!
-!-------------------------------------------------------------------------------------------------
-!
+! --- evaluate perturbations
 
-! --- evaluate perturbations in percent
-
-  subroutine model_s362ani_subshsv(xcolat,xlon,xrad,dvsh,dvsv,dvph,dvpv)
-
-  use model_s362ani_par
+  subroutine model_s362ani_subshsv(xcolat,xlon,xrad, &
+                         vshout,vsvout,vphout,vpvout, &
+                       modeldef)
 
   implicit none
 
-  real(kind=4) :: xcolat,xlon,xrad
-  real(kind=4) :: dvsh,dvsv,dvph,dvpv
+  real*4 xcolat,xlon,xrad
+  real*4 vshout,vsvout,vphout,vpvout
+
+!! DK DK save this value
+  integer :: ifknowmodel
+  common / ifknowmod / ifknowmodel
 
 ! --- model evaluation
 
   integer ish ! --- 0 if SV, 1 if SH
   integer ieval     ! --- 1 for velocity, 2 for anisotropy
-  real(kind=4) :: valu(2)    ! --- valu(1) if S; valu(1)=velo, valu(2)=aniso
-  real(kind=4) :: value      ! --- used in single evaluation of perturbation
+  real*4 valu(2)    ! --- valu(1) if S; valu(1)=velo, valu(2)=aniso
+  real*4 value      ! --- used in single evaluation of perturbation
   integer isel      ! --- if variable should be included
-  real(kind=4) :: depth      ! --- depth
-  real(kind=4) :: x,y  ! --- lat lon
-  real(kind=4) :: vsh3drel   ! --- relative perturbation
-  real(kind=4) :: vsv3drel   ! --- relative perturbation
+  real*4 depth      ! --- depth
+  real*4 x,y  ! --- lat lon
+  real*4 vsh3drel   ! --- relative perturbation
+  real*4 vsv3drel   ! --- relative perturbation
 
 ! ---
 
+  character(len=128) modeldef
   integer iker,i
   character(len=40) vstr
-  integer lstr
+  logical exists
+  integer lu,numvar,lstr
   integer ierror
 
+  include 'mod.h'
+
 ! -------------------------------------
-  vsv3drel = 0.
-  vsh3drel = 0.
+
+  lu=1              ! --- log unit: input 3-D model
+
+! --- read the model if necessary
+
+  if(ifknowmodel/=0) then
+  else
+    inquire(file=modeldef,exist=exists)
+    if(exists) then
+      call gt3dmodl(lu,modeldef, &
+          maxhpa,maxker,maxcoe, &
+          numhpa,numker,numcoe,lmxhpa, &
+          ihpakern,itypehpa,coe, &
+          itpspl,xlaspl,xlospl,radspl, &
+          numvar,ivarkern,varstr, &
+          refmdl,kerstr,hsplfl,dskker,ierror)
+  else
+    write(6,"('the model ',a,' does not exits')")modeldef(1:len_trim(modeldef))
+  endif
+  ifknowmodel=1
+
+!       --- check arrays
+
+  if(numker>maxker) stop 'numker>maxker'
+    do ihpa=1,numhpa
+     if(itypehpa(ihpa)==1) then
+    if(lmxhpa(ihpa)>maxl) stop 'lmxhpa(ihpa)>maxl'
+   else if(itypehpa(ihpa)==2) then
+    if(numcoe(ihpa)>maxcoe) stop 'numcoe(ihpa)>maxcoe'
+   else
+    stop 'problem with itypehpa'
+   endif
+  enddo
+  endif
+
+! --- evaluate radial basis functions
 
   depth=6371.0-xrad
   call evradker (depth,kerstr,numker,vercof,vercofd,ierror)
-  if(ierror /= 0) stop 'ierror evradker'
+  if(ierror/=0) stop 'ierror evradker'
 
 ! --- loop over sv and sh (sv=0,sh=1)
 
@@ -1183,35 +957,21 @@
 
   y=90.0-xcolat
   x=xlon
-
   do ihpa=1,numhpa
-      if(itypehpa(ihpa) == 1) then
+      if(itypehpa(ihpa)==1) then
         lmax=lmxhpa(ihpa)
         call ylm(y,x,lmax,ylmcof(1,ihpa),wk1,wk2,wk3)
-      else if(itypehpa(ihpa) == 2) then
+      else if(itypehpa(ihpa)==2) then
         numcof=numcoe(ihpa)
-
-! originally called
-         call splcon(y,x,numcof,xlaspl(1,ihpa), &
-               xlospl(1,ihpa),radspl(1,ihpa), &
-               nconpt(ihpa),iconpt(1,ihpa),conpt(1,ihpa))
-
-! making sure of array bounds
-!! note from DK DK, July 2013: the code below is correct but it is exactly the same as the code
-!! note from DK DK, July 2013: above because xlaspl(1:numcof,ihpa) is contiguous in memory, and thus
-!! note from DK DK, July 2013: using a pointer to it such as xlaspl(1,ihpa) in the call seems fine as well;
-!! note from DK DK, July 2013: and some compilers could create expensive and useless memory copies for each call
-!! note from DK DK, July 2013: with the new syntax below
-!       call splcon(y,x,numcof,xlaspl(1:numcof,ihpa), &
-!             xlospl(1:numcof,ihpa),radspl(1:numcof,ihpa), &
-!             nconpt(ihpa),iconpt(1,ihpa),conpt(1,ihpa))
-
+        call splcon(y,x,numcof,xlaspl(1,ihpa), &
+              xlospl(1,ihpa),radspl(1,ihpa), &
+              nconpt(ihpa),iconpt(1,ihpa),conpt(1,ihpa))
       else
         write(6,"('problem 1')")
       endif
   enddo
 
-! evaluate 3-D perturbations in velocity and anisotropy
+!         --- evaluate 3-D perturbations in velocity and anisotropy
 
   valu(1)=0. ! --- velocity
   valu(2)=0. ! --- anisotropy
@@ -1222,125 +982,159 @@
       isel=0
       lstr=len_trim(varstr(ivarkern(iker)))
       vstr=(varstr(ivarkern(iker)))
-      if(ieval == 1) then
-        if(vstr(1:lstr) == 'UM (SH+SV)*0.5,'.or. vstr(1:lstr) == 'LM (SH+SV)*0.5,'.or. &
-                 vstr(1:lstr) == 'EA (SH+SV)*0.5,') then
+      if(ieval==1) then
+        if(vstr(1:lstr)=='UM (SH+SV)*0.5,'.or. &
+                 vstr(1:lstr)=='LM (SH+SV)*0.5,'.or. &
+                 vstr(1:lstr)=='EA (SH+SV)*0.5,') then
           isel=1
       endif
-      else if(ieval == 2) then
-        if(vstr(1:lstr) == 'UM SH-SV,'.or. vstr(1:lstr) == 'LM SH-SV,'.or. &
-                       vstr(1:lstr) == 'EA SH-SV,') then
+      else if(ieval==2) then
+        if(vstr(1:lstr)=='UM SH-SV,'.or. &
+                       vstr(1:lstr)=='LM SH-SV,'.or. &
+                       vstr(1:lstr)=='EA SH-SV,') then
           isel=1
         endif
       endif
 
-      if(isel == 1) then
-        if(vercof(iker) /= 0.) then
-            if(itypehpa(ihpakern(iker)) == 1) then
+      if(isel==1) then
+        if(vercof(iker)/=0.) then
+            if(itypehpa(ihpakern(iker))==1) then
           ihpa=ihpakern(iker)
               nylm=(lmxhpa(ihpakern(iker))+1)**2
               do i=1,nylm
-                value=value+vercof(iker)*ylmcof(i,ihpa)*coe(i,iker)
+                value=value+vercof(iker)*ylmcof(i,ihpa) &
+                          *coe(i,iker)
               enddo
-            else if(itypehpa(ihpakern(iker)) == 2) then
+            else if(itypehpa(ihpakern(iker))==2) then
           ihpa=ihpakern(iker)
               do i=1,nconpt(ihpa)
                 iver=iconpt(i,ihpa)
-                value=value+vercof(iker)*conpt(i,ihpa)*coe(iver,iker)
+                value=value+vercof(iker)*conpt(i,ihpa) &
+                          *coe(iver,iker)
               enddo
             else
-              stop 'problem 2'
+              write(6,"('problem 2')")
+              stop
             endif ! --- itypehpa
-        endif ! --- vercof(iker) /= 0.
-      endif ! --- isel == 1
+        endif ! --- vercof(iker)/=0.
+      endif ! --- isel==1
     enddo ! --- end of do iker=1,numker
 
     valu(ieval)=value
   enddo ! --- ieval
 
-! evaluate perturbations in vsh and vsv
+!       --- evaluate perturbations in vsh and vsv
 
-  if(ish == 1) then
+  if(ish==1) then
     vsh3drel=valu(1)+0.5*valu(2)
-  else if(ish == 0) then
+  else if(ish==0) then
     vsv3drel=valu(1)-0.5*valu(2)
   else
-    stop 'something is wrong in model_s362ani_subshsv'
+    stop 'something wrong'
   endif
 
   enddo ! --- by ish
 
-! evaluate perturbations in percent
+! --- evaluate perturbations
 
-  dvsh=vsh3drel
-  dvsv=vsv3drel
-  dvph=0.55*dvsh    ! scaling used in the inversion
-  dvpv=0.55*dvsv    ! scaling used in the inversion
+!! DK DK SPECFEM does not need percents  vshout=100.0*vsh3drel
+!! DK DK SPECFEM does not need percents  vsvout=100.0*vsv3drel
+  vshout=vsh3drel
+  vsvout=vsv3drel
 
-  end subroutine model_s362ani_subshsv
+  vphout=0.55*vshout      ! --- scaling used in the inversion
+  vpvout=0.55*vsvout      ! --- scaling used in the inversion
 
-!
-!-------------------------------------------------------------------------------------------------
-!
+  end
+
 
 ! --- evaluate depressions of the 410- and 650-km discontinuities in km
 
-  subroutine model_s362ani_subtopo(xcolat,xlon,topo410,topo650)
-
-  use model_s362ani_par
+  subroutine model_s362ani_subtopo(xcolat,xlon,topo410out,topo650out, &
+               modeldef)
 
   implicit none
 
-  real(kind=4) :: xcolat,xlon
-  real(kind=4) :: topo410,topo650
+  real*4 xcolat,xlon
+  real*4 topo410out,topo650out
+
+!! DK DK save this value
+  integer :: ifknowmodel
+  common / ifknowmod / ifknowmodel
 
 ! --- model evaluation
 
-  integer ieval     ! --- 1 for velocity, 2 for anisotropy
-  real(kind=4) :: valu(2)    ! --- valu(1) if S; valu(1)=velo, valu(2)=aniso
-  real(kind=4) :: value      ! --- used in single evaluation of perturbation
-  integer isel      ! --- if variable should be included
-  real(kind=4) :: x,y  ! --- lat lon
+  integer ieval
+  real*4 valu(2)
+  real*4 value
+  integer isel
+  real*4 x,y  ! --- lat lon
 
 ! ---
+  character(len=128) modeldef
   integer iker,i
   character(len=40) vstr
-  integer lstr
+  logical exists
+  integer lu,numvar,lstr
+  integer ierror
+
+  include 'mod.h'
 
 ! -------------------------------------
 
-! contributing horizontal basis functions at xlat,xlon
+  lu=1              ! --- log unit: input 3-D model
+
+! --- read the model if necessary
+
+  if(ifknowmodel/=0) then
+  else
+    inquire(file=modeldef,exist=exists)
+    if(exists) then
+      call gt3dmodl(lu,modeldef, &
+          maxhpa,maxker,maxcoe, &
+          numhpa,numker,numcoe,lmxhpa, &
+          ihpakern,itypehpa,coe, &
+          itpspl,xlaspl,xlospl,radspl, &
+          numvar,ivarkern,varstr, &
+          refmdl,kerstr,hsplfl,dskker,ierror)
+  else
+    write(6,"('the model ',a,' does not exits')") modeldef(1:len_trim(modeldef))
+  endif
+  ifknowmodel=1
+
+!       --- check arrays
+
+  if(numker>maxker) stop 'numker>maxker'
+    do ihpa=1,numhpa
+     if(itypehpa(ihpa)==1) then
+    if(lmxhpa(ihpa)>maxl) stop 'lmxhpa(ihpa)>maxl'
+   else if(itypehpa(ihpa)==2) then
+    if(numcoe(ihpa)>maxcoe) stop 'numcoe(ihpa)>maxcoe'
+   else
+    stop 'problem with itypehpa'
+   endif
+  enddo
+  endif
+
+!       --- contributing horizontal basis functions at xlat,xlon
 
   y=90.0-xcolat
   x=xlon
   do ihpa=1,numhpa
-    if(itypehpa(ihpa) == 1) then
-      lmax=lmxhpa(ihpa)
-      call ylm(y,x,lmax,ylmcof(1,ihpa),wk1,wk2,wk3)
-    else if(itypehpa(ihpa) == 2) then
-      numcof=numcoe(ihpa)
-
-! originally called
-         call splcon(y,x,numcof,xlaspl(1,ihpa), &
-               xlospl(1,ihpa),radspl(1,ihpa), &
-               nconpt(ihpa),iconpt(1,ihpa),conpt(1,ihpa))
-
-! making sure of array bounds
-!! note from DK DK, July 2013: the code below is correct but it is exactly the same as the code
-!! note from DK DK, July 2013: above because xlaspl(1:numcof,ihpa) is contiguous in memory, and thus
-!! note from DK DK, July 2013: using a pointer to it such as xlaspl(1,ihpa) in the call seems fine as well;
-!! note from DK DK, July 2013: and some compilers could create expensive and useless memory copies for each call
-!! note from DK DK, July 2013: with the new syntax below
-!       call splcon(y,x,numcof,xlaspl(1:numcof,ihpa), &
-!             xlospl(1:numcof,ihpa),radspl(1:numcof,ihpa), &
-!             nconpt(ihpa),iconpt(1:maxver,ihpa),conpt(1:maxver,ihpa))
-
-    else
-      write(6,"('problem 1')")
-    endif
+      if(itypehpa(ihpa)==1) then
+        lmax=lmxhpa(ihpa)
+        call ylm(y,x,lmax,ylmcof(1,ihpa),wk1,wk2,wk3)
+      else if(itypehpa(ihpa)==2) then
+        numcof=numcoe(ihpa)
+        call splcon(y,x,numcof,xlaspl(1,ihpa), &
+              xlospl(1,ihpa),radspl(1,ihpa), &
+              nconpt(ihpa),iconpt(1,ihpa),conpt(1,ihpa))
+      else
+        write(6,"('problem 1')")
+      endif
   enddo
 
-! evaluate topography (depression) in km
+!         --- evaluate topography (depression) in km
 
   valu(1)=0. ! --- 410
   valu(2)=0. ! --- 650
@@ -1351,67 +1145,54 @@
       isel=0
       lstr=len_trim(varstr(ivarkern(iker)))
       vstr=(varstr(ivarkern(iker)))
-      if(ieval == 1) then
-        if(vstr(1:lstr) == 'Topo 400,') then
+      if(ieval==1) then
+        if(vstr(1:lstr)=='Topo 400,') then
           isel=1
       endif
-      else if(ieval == 2) then
-        if(vstr(1:lstr) == 'Topo 670,') then
+      else if(ieval==2) then
+        if(vstr(1:lstr)=='Topo 670,') then
           isel=1
         endif
       endif
 
-      if(isel == 1) then
-            if(itypehpa(ihpakern(iker)) == 1) then
+      if(isel==1) then
+            if(itypehpa(ihpakern(iker))==1) then
           ihpa=ihpakern(iker)
               nylm=(lmxhpa(ihpakern(iker))+1)**2
               do i=1,nylm
                 value=value+ylmcof(i,ihpa)*coe(i,iker)
               enddo
-            else if(itypehpa(ihpakern(iker)) == 2) then
+            else if(itypehpa(ihpakern(iker))==2) then
           ihpa=ihpakern(iker)
               do i=1,nconpt(ihpa)
                 iver=iconpt(i,ihpa)
                 value=value+conpt(i,ihpa)*coe(iver,iker)
               enddo
             else
-              stop 'problem 2'
+              write(6,"('problem 2')")
+              stop
             endif ! --- itypehpa
-      endif ! --- isel == 1
+      endif ! --- isel==1
     enddo ! --- end of do iker=1,numker
 
     valu(ieval)=value
   enddo ! --- ieval
 
-  topo410=valu(1)
-  topo650=valu(2)
+  topo410out=valu(1)
+  topo650out=valu(2)
+  end
 
-  end subroutine model_s362ani_subtopo
 
-!
-!-------------------------------------------------------------------------------------------------
-!
+
+
 
   subroutine vbspl(x,np,xarr,splcon,splcond)
 !
 !---- this subroutine returns the spline contributions at a particular value of x
 !
-  implicit none
-
-  integer :: np
-
-  real(kind=4) :: xarr(np),x
-  real(kind=4) :: splcon(np)
-  real(kind=4) :: splcond(np)
-
-  real(kind=4) :: r1,r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,r12,r13
-  real(kind=4) :: r1d,r2d,r3d,r4d,r5d,r6d,r7d,r8d,r9d,r10d,r11d,r12d,r13d,val,vald
-
-  real(kind=4) :: rr1,rr2,rr3,rr4,rr5,rr6,rr7,rr8,rr9,rr10,rr11,rr12
-  real(kind=4) :: rr1d,rr2d,rr3d,rr4d,rr5d,rr6d,rr7d,rr8d,rr9d,rr10d,rr11d,rr12d
-
-  integer :: iflag,interval,ik,ib
-
+  dimension xarr(np)
+  dimension splcon(np)
+  dimension splcond(np)
 !
 !---- iflag=1 ==>> second derivative is 0 at end points
 !---- iflag=0 ==>> first derivative is 0 at end points
@@ -1422,20 +1203,19 @@
 !
   interval=0
   ik=1
-  do while(interval == 0.and.ik < np)
+  do while(interval==0.and.ik<np)
   ik=ik+1
-  if(x >= xarr(ik-1).and.x <= xarr(ik)) interval=ik-1
+  if(x>=xarr(ik-1).and.x<=xarr(ik)) interval=ik-1
   enddo
-  if(x > xarr(np)) then
+  if(x>xarr(np)) then
   interval=np
   endif
 
   do ib=1,np
-
   val=0.
   vald=0.
 
-  if(ib == 1) then
+  if(ib==1) then
 
     r1=(x-xarr(1))/(xarr(2)-xarr(1))
     r2=(xarr(3)-x)/(xarr(3)-xarr(1))
@@ -1457,36 +1237,36 @@
    r12d=-1./(xarr(3)-xarr(2))
    r13d=-1./(xarr(2)-xarr(1))
 
-    if(interval == ib.or.interval == 0) then
-
-         if(iflag == 0) then
+    if(interval==ib.or.interval==0) then
+         if(iflag==0) then
            val=r1*r4*r10 + r2*r5*r10 + r2*r6*r11 +r13**3
            vald=r1d*r4*r10+r1*r4d*r10+r1*r4*r10d
            vald=vald+r2d*r5*r10+r2*r5d*r10+r2*r5*r10d
            vald=vald+r2d*r6*r11+r2*r6d*r11+r2*r6*r11d
            vald=vald+3.*r13d*r13**2
-         else if(iflag == 1) then
-           val=0.6667*(r1*r4*r10 + r2*r5*r10 + r2*r6*r11 + 1.5*r13**3)
+         else if(iflag==1) then
+           val=0.6667*(r1*r4*r10 + r2*r5*r10 + r2*r6*r11 &
+                    + 1.5*r13**3)
            vald=r1d*r4*r10+r1*r4d*r10+r1*r4*r10d
            vald=vald+r2d*r5*r10+r2*r5d*r10+r2*r5*r10d
            vald=vald+r2d*r6*r11+r2*r6d*r11+r2*r6*r11d
            vald=vald+4.5*r13d*r13**2
            vald=0.6667*vald
          endif
-    else if(interval == ib+1) then
-         if(iflag == 0) then
+    else if(interval==ib+1) then
+         if(iflag==0) then
            val=r2*r6*r12
            vald=r2d*r6*r12+r2*r6d*r12+r2*r6*r12d
-         else if(iflag == 1) then
+         else if(iflag==1) then
            val=0.6667*r2*r6*r12
            vald=0.6667*(r2d*r6*r12+r2*r6d*r12+r2*r6*r12d)
          endif
     else
       val=0.
     endif
-
-  else if(ib == 2) then
-
+!
+  else if(ib==2) then
+!
     rr1=(x-xarr(1))/(xarr(2)-xarr(1))
     rr2=(xarr(3)-x)/(xarr(3)-xarr(1))
     rr4=(xarr(2)-x)/(xarr(2)-xarr(1))
@@ -1495,7 +1275,7 @@
    rr10=(xarr(2)-x)/(xarr(2)-xarr(1))
    rr11=(x-xarr(1))  /(xarr(2)-xarr(1))
    rr12=(xarr(3)-x)/(xarr(3)-xarr(2))
-
+!
     rr1d=1./(xarr(2)-xarr(1))
     rr2d=-1./(xarr(3)-xarr(1))
     rr4d=-1./(xarr(2)-xarr(1))
@@ -1504,7 +1284,7 @@
    rr10d=-1./(xarr(2)-xarr(1))
    rr11d=1./(xarr(2)-xarr(1))
    rr12d=-1./(xarr(3)-xarr(2))
-
+!
     r1=(x-xarr(ib-1))/(xarr(ib+1)-xarr(ib-1))
     r2=(xarr(ib+2)-x)/(xarr(ib+2)-xarr(ib-1))
     r3=(x-xarr(ib-1))/(xarr(ib)-xarr(ib-1))
@@ -1516,7 +1296,7 @@
    r10=(xarr(ib+1)-x)/(xarr(ib+1)-xarr(ib))
    r11=(x-xarr(ib))  /(xarr(ib+1)-xarr(ib))
    r12=(xarr(ib+2)-x)/(xarr(ib+2)-xarr(ib+1))
-
+!
     r1d=1./(xarr(ib+1)-xarr(ib-1))
     r2d=-1./(xarr(ib+2)-xarr(ib-1))
     r3d=1./(xarr(ib)-xarr(ib-1))
@@ -1528,36 +1308,40 @@
    r10d=-1./(xarr(ib+1)-xarr(ib))
    r11d=1./(xarr(ib+1)-xarr(ib))
    r12d=-1./(xarr(ib+2)-xarr(ib+1))
-
-    if(interval == ib-1.or.interval == 0) then
+!
+    if(interval==ib-1.or.interval==0) then
          val=r1*r3*r8 + r1*r4*r9 + r2*r5*r9
          vald=r1d*r3*r8+r1*r3d*r8+r1*r3*r8d
          vald=vald+r1d*r4*r9+r1*r4d*r9+r1*r4*r9d
          vald=vald+r2d*r5*r9+r2*r5d*r9+r2*r5*r9d
-         if(iflag == 1) then
-           val=val+0.3333*(rr1*rr4*rr10 + rr2*rr5*rr10 + rr2*rr6*rr11)
-           vald=vald+0.3333*(rr1d*rr4*rr10+rr1*rr4d*rr10+ rr1*rr4*rr10d)
-           vald=vald+0.3333*(rr2d*rr5*rr10+rr2*rr5d*rr10+ rr2*rr5*rr10d)
-           vald=vald+0.3333*(rr2d*rr6*rr11+rr2*rr6d*rr11+ rr2*rr6*rr11d)
+         if(iflag==1) then
+           val=val+0.3333*(rr1*rr4*rr10 + rr2*rr5*rr10 + &
+                     rr2*rr6*rr11)
+           vald=vald+0.3333*(rr1d*rr4*rr10+rr1*rr4d*rr10+ &
+                    rr1*rr4*rr10d)
+           vald=vald+0.3333*(rr2d*rr5*rr10+rr2*rr5d*rr10+ &
+                    rr2*rr5*rr10d)
+           vald=vald+0.3333*(rr2d*rr6*rr11+rr2*rr6d*rr11+ &
+                    rr2*rr6*rr11d)
          endif
-    else if(interval == ib) then
+    else if(interval==ib) then
          val=r1*r4*r10 + r2*r5*r10 + r2*r6*r11
          vald=r1d*r4*r10+r1*r4d*r10+r1*r4*r10d
          vald=vald+r2d*r5*r10+r2*r5d*r10+r2*r5*r10d
          vald=vald+r2d*r6*r11+r2*r6d*r11+r2*r6*r11d
-         if(iflag == 1) then
+         if(iflag==1) then
            val=val+0.3333*rr2*rr6*rr12
-           vald=vald+0.3333*(rr2d*rr6*rr12+rr2*rr6d*rr12+ rr2*rr6*rr12d)
+           vald=vald+0.3333*(rr2d*rr6*rr12+rr2*rr6d*rr12+ &
+                    rr2*rr6*rr12d)
          endif
-    else if(interval == ib+1) then
+    else if(interval==ib+1) then
          val=r2*r6*r12
          vald=r2d*r6*r12+r2*r6d*r12+r2*r6*r12d
     else
          val=0.
     endif
-
-  else if(ib == np-1) then
-
+  else if(ib==np-1) then
+!
     rr1=(x-xarr(np-2))/(xarr(np)-xarr(np-2))
     rr2=(xarr(np)-x)/(xarr(np)-xarr(np-1))
     rr3=(x-xarr(np-2))/(xarr(np)-xarr(np-2))
@@ -1566,7 +1350,7 @@
     rr7=(x-xarr(np-2))/(xarr(np-1)-xarr(np-2))
     rr8=(xarr(np)-x)/  (xarr(np)-xarr(np-1))
     rr9=(x-xarr(np-1))/(xarr(np)-xarr(np-1))
-
+!
     rr1d=1./(xarr(np)-xarr(np-2))
     rr2d=-1./(xarr(np)-xarr(np-1))
     rr3d=1./(xarr(np)-xarr(np-2))
@@ -1575,7 +1359,7 @@
     rr7d=1./(xarr(np-1)-xarr(np-2))
     rr8d=-1./  (xarr(np)-xarr(np-1))
     rr9d=1./(xarr(np)-xarr(np-1))
-
+!
     r1=(x-xarr(ib-2))/(xarr(ib+1)-xarr(ib-2))
     r2=(xarr(ib+1)-x)/(xarr(ib+1)-xarr(ib-1))
     r3=(x-xarr(ib-2))/(xarr(ib)-xarr(ib-2))
@@ -1587,7 +1371,7 @@
     r9=(x-xarr(ib-1))/(xarr(ib)-xarr(ib-1))
    r10=(xarr(ib+1)-x)/(xarr(ib+1)-xarr(ib))
    r11=(x-xarr(ib))  /(xarr(ib+1)-xarr(ib))
-
+!
     r1d=1./(xarr(ib+1)-xarr(ib-2))
     r2d=-1./(xarr(ib+1)-xarr(ib-1))
     r3d=1./(xarr(ib)-xarr(ib-2))
@@ -1599,36 +1383,40 @@
     r9d=1./(xarr(ib)-xarr(ib-1))
    r10d=-1./(xarr(ib+1)-xarr(ib))
    r11d=1./(xarr(ib+1)-xarr(ib))
-
-    if(interval == ib-2) then
+!
+    if(interval==ib-2) then
          val=r1*r3*r7
          vald=r1d*r3*r7+r1*r3d*r7+r1*r3*r7d
-    else if(interval == ib-1) then
+    else if(interval==ib-1) then
          val=r1*r3*r8 + r1*r4*r9 + r2*r5*r9
          vald=r1d*r3*r8+r1*r3d*r8+r1*r3*r8d
          vald=vald+r1d*r4*r9+r1*r4d*r9+r1*r4*r9d
          vald=vald+r2d*r5*r9+r2*r5d*r9+r2*r5*r9d
-         if(iflag == 1) then
+         if(iflag==1) then
            val=val+0.3333*rr1*rr3*rr7
-           vald=vald+0.3333*(rr1d*rr3*rr7+rr1*rr3d*rr7+ rr1*rr3*rr7d)
+           vald=vald+0.3333*(rr1d*rr3*rr7+rr1*rr3d*rr7+ &
+                    rr1*rr3*rr7d)
          endif
-    else if(interval == ib.or.interval == np) then
+    else if(interval==ib.or.interval==np) then
          val=r1*r4*r10 + r2*r5*r10 + r2*r6*r11
          vald=r1d*r4*r10+r1*r4d*r10+r1*r4*r10d
          vald=vald+r2d*r5*r10+r2*r5d*r10+r2*r5*r10d
          vald=vald+r2d*r6*r11+r2*r6d*r11+r2*r6*r11d
-         if(iflag == 1) then
-           val=val+0.3333*(rr1*rr3*rr8 + rr1*rr4*rr9 + rr2*rr5*rr9)
-           vald=vald+0.3333*(rr1d*rr3*rr8+rr1*rr3d*rr8+ rr1*rr3*rr8d)
-           vald=vald+0.3333*(rr1d*rr4*rr9+rr1*rr4d*rr9+ rr1*rr4*rr9d)
-           vald=vald+0.3333*(rr2d*rr5*rr9+rr2*rr5d*rr9+ rr2*rr5*rr9d)
+         if(iflag==1) then
+           val=val+0.3333*(rr1*rr3*rr8 + rr1*rr4*rr9 + &
+                     rr2*rr5*rr9)
+           vald=vald+0.3333*(rr1d*rr3*rr8+rr1*rr3d*rr8+ &
+                    rr1*rr3*rr8d)
+           vald=vald+0.3333*(rr1d*rr4*rr9+rr1*rr4d*rr9+ &
+                    rr1*rr4*rr9d)
+           vald=vald+0.3333*(rr2d*rr5*rr9+rr2*rr5d*rr9+ &
+                    rr2*rr5*rr9d)
          endif
     else
       val=0.
     endif
-
-  else if(ib == np) then
-
+  else if(ib==np) then
+!
     r1=(x-xarr(np-2))/(xarr(np)-xarr(np-2))
     r2=(xarr(np)-x)/(xarr(np)-xarr(np-1))
     r3=(x-xarr(np-2))/(xarr(np)-xarr(np-2))
@@ -1638,7 +1426,7 @@
     r8=(xarr(np)-x)/  (xarr(np)-xarr(np-1))
     r9=(x-xarr(np-1))/(xarr(np)-xarr(np-1))
     r13=(x-xarr(np-1))/(xarr(np)-xarr(np-1))
-
+!
     r1d=1./(xarr(np)-xarr(np-2))
     r2d=-1./(xarr(np)-xarr(np-1))
     r3d=1./(xarr(np)-xarr(np-2))
@@ -1648,24 +1436,25 @@
     r8d=-1./  (xarr(np)-xarr(np-1))
     r9d=1./(xarr(np)-xarr(np-1))
     r13d=1./(xarr(np)-xarr(np-1))
-
-    if(interval == np-2) then
-         if(iflag == 0) then
+!
+    if(interval==np-2) then
+         if(iflag==0) then
            val=r1*r3*r7
            vald=r1d*r3*r7+r1*r3d*r7+r1*r3*r7d
-         else if(iflag == 1) then
+         else if(iflag==1) then
            val=0.6667*r1*r3*r7
            vald=0.6667*(r1d*r3*r7+r1*r3d*r7+r1*r3*r7d)
          endif
-    else if(interval == np-1.or.interval == np) then
-         if(iflag == 0) then
+    else if(interval==np-1.or.interval==np) then
+         if(iflag==0) then
            val=r1*r3*r8 + r1*r4*r9 + r2*r5*r9 + r13**3
            vald=r1d*r3*r8+r1*r3d*r8+r1*r3*r8d
            vald=vald+r1d*r4*r9+r1*r4d*r9+r1*r4*r9d
            vald=vald+r2d*r5*r9+r2*r5d*r9+r2*r5*r9d
            vald=vald+3.*r13d*r13**2
-         else if(iflag == 1) then
-           val=0.6667*(r1*r3*r8 + r1*r4*r9 + r2*r5*r9 + 1.5*r13**3)
+         else if(iflag==1) then
+           val=0.6667*(r1*r3*r8 + r1*r4*r9 + r2*r5*r9 + &
+                     1.5*r13**3)
            vald=r1d*r3*r8+r1*r3d*r8+r1*r3*r8d
            vald=vald+r1d*r4*r9+r1*r4d*r9+r1*r4*r9d
            vald=vald+r2d*r5*r9+r2*r5d*r9+r2*r5*r9d
@@ -1676,7 +1465,7 @@
       val=0.
     endif
   else
-
+!
     r1=(x-xarr(ib-2))/(xarr(ib+1)-xarr(ib-2))
     r2=(xarr(ib+2)-x)/(xarr(ib+2)-xarr(ib-1))
     r3=(x-xarr(ib-2))/(xarr(ib)-xarr(ib-2))
@@ -1689,7 +1478,7 @@
    r10=(xarr(ib+1)-x)/(xarr(ib+1)-xarr(ib))
    r11=(x-xarr(ib))  /(xarr(ib+1)-xarr(ib))
    r12=(xarr(ib+2)-x)/(xarr(ib+2)-xarr(ib+1))
-
+!
     r1d=1./(xarr(ib+1)-xarr(ib-2))
     r2d=-1./(xarr(ib+2)-xarr(ib-1))
     r3d=1./(xarr(ib)-xarr(ib-2))
@@ -1702,21 +1491,21 @@
    r10d=-1./(xarr(ib+1)-xarr(ib))
    r11d=1./(xarr(ib+1)-xarr(ib))
    r12d=-1./(xarr(ib+2)-xarr(ib+1))
-
-    if(interval == ib-2) then
+!
+    if(interval==ib-2) then
          val=r1*r3*r7
          vald=r1d*r3*r7+r1*r3d*r7+r1*r3*r7d
-    else if(interval == ib-1) then
+    else if(interval==ib-1) then
          val=r1*r3*r8 + r1*r4*r9 + r2*r5*r9
          vald=r1d*r3*r8+r1*r3d*r8+r1*r3*r8d
          vald=vald+r1d*r4*r9+r1*r4d*r9+r1*r4*r9d
          vald=vald+r2d*r5*r9+r2*r5d*r9+r2*r5*r9d
-    else if(interval == ib) then
+    else if(interval==ib) then
          val=r1*r4*r10 + r2*r5*r10 + r2*r6*r11
          vald=r1d*r4*r10+r1*r4d*r10+r1*r4*r10d
          vald=vald+r2d*r5*r10+r2*r5d*r10+r2*r5*r10d
          vald=vald+r2d*r6*r11+r2*r6d*r11+r2*r6*r11d
-    else if(interval == ib+1) then
+    else if(interval==ib+1) then
          val=r2*r6*r12
          vald=r2d*r6*r12+r2*r6d*r12+r2*r6*r12d
     else
@@ -1727,88 +1516,49 @@
   splcond(ib)=vald
   enddo
 
-  end subroutine vbspl
+  end
 
+  SUBROUTINE YLM(XLAT,XLON,LMAX,Y,WK1,WK2,WK3)
 !
-!-------------------------------------------------------------------------------------------------
-!
-
-  subroutine ylm(XLAT,XLON,LMAX,Y,WK1,WK2,WK3)
-
-  implicit none
-
-  complex TEMP,FAC,DFAC
-
-  integer :: LMAX
-
+  COMPLEX TEMP,FAC,DFAC
+  DIMENSION WK1(1),WK2(1),WK3(1),Y(1)
 !
 !     WK1,WK2,WK3 SHOULD BE DIMENSIONED AT LEAST (LMAX+1)*4
 !
-! real(kind=4) WK1(1),WK2(1),WK3(1),Y(1),XLAT,XLON
-  real(kind=4), dimension(LMAX+1) :: WK1,WK2,WK3
-  real(kind=4) :: XLAT,XLON
-  real(kind=4), dimension((LMAX+1)**2) :: Y !! Y should go at least from 1 to fac(LMAX)
-
-  real(kind=4), parameter :: RADIAN = 57.2957795
-
-  integer :: IM,IL1,IND,LM1,L
-
-  real(kind=4) :: THETA,PHI
-
+  DATA RADIAN/57.2957795/
+!
   THETA=(90.-XLAT)/RADIAN
   PHI=XLON/RADIAN
-
+!
   IND=0
   LM1=LMAX+1
-
-  DO IL1=1,LM1
-
-    ! index L goes from 0 to LMAX
-    L=IL1-1
-
-    ! see legndr(): WK1,WK2,WK3 should go from 1 to L+1
-    ! CALL legndr(THETA,L,L,WK1,WK2,WK3)
-    CALL legndr(THETA,L,L,WK1(1:L+1),WK2(1:L+1),WK3(1:L+1))
-
-    FAC=(1.,0.)
-    DFAC=CEXP(CMPLX(0.,PHI))
-
-    ! loops over M
-    do IM=1,IL1
-      ! index IM goes maximum from 1 to LMAX+1
-      TEMP=FAC*CMPLX(WK1(IM),0.)
-      IND=IND+1
-      Y(IND)=REAL(TEMP)
-      IF(IM == 1) GOTO 20
-      IND=IND+1
-      Y(IND)=AIMAG(TEMP)
- 20   FAC=FAC*DFAC
-    enddo
-
-  enddo
-
-  end subroutine ylm
-
+  DO 10 IL1=1,LM1
+  L=IL1-1
+  CALL LEGNDR(THETA,L,L,WK1,WK2,WK3)
 !
-!-------------------------------------------------------------------------------------------------
+  FAC=(1.,0.)
+  DFAC=CEXP(CMPLX(0.,PHI))
 !
+  DO 20 IM=1,IL1
+  TEMP=FAC*CMPLX(WK1(IM),0.)
+  IND=IND+1
+  Y(IND)=REAL(TEMP)
+  IF(IM==1) GOTO 20
+  IND=IND+1
+  Y(IND)=AIMAG(TEMP)
+   20 FAC=FAC*DFAC
+!
+   10 CONTINUE
 
-  subroutine legndr(THETA,L,M,X,XP,XCOSEC)
+  END
+!
+  SUBROUTINE LEGNDR(THETA,L,M,X,XP,XCOSEC)
+  DIMENSION X(2),XP(2),XCOSEC(2)
+  DOUBLE PRECISION SMALL,sumval,COMPAR,CT,ST,FCT,COT,FPI,X1,X2,X3, &
+  F1,F2,XM,TH,DFLOAT
+  DATA FPI/12.56637062D0/
 
-  implicit none
-
-! real(kind=4) :: X(2),XP(2),XCOSEC(2) !! X, XP, XCOSEC should go from 1 to M+1
-  real(kind=4) :: X(M+1),XP(M+1),XCOSEC(M+1) !! X, XP, XCOSEC should go from 1 to M+1
-
-  double precision :: SMALL,sumval,COMPAR,CT,ST,FCT,COT,X1,X2,X3,F1,F2,XM,TH
-
-  double precision, parameter :: FPI = 12.56637062D0
-
-  integer :: i,M,MP1,k,l,LP1
-
-  real(kind=4) :: THETA,DSFL3,COSEC,SFL3
-
-!!!!!! illegal statement, removed by Dimitri Komatitsch   DFLOAT(I)=FLOAT(I)
+!!!!!!!!!!!!!! DK DK illegal statement removed     DFLOAT(I)=FLOAT(I)
 
   sumval=0.D0
   LP1=L+1
@@ -1816,69 +1566,61 @@
   CT=DCOS(TH)
   ST=DSIN(TH)
   MP1=M+1
-  FCT=DSQRT(dble(2*L+1)/FPI)
+  FCT=DSQRT(DFLOAT(2*L+1)/FPI)
   SFL3=SQRT(FLOAT(L*(L+1)))
-  COMPAR=dble(2*L+1)/FPI
+  COMPAR=DFLOAT(2*L+1)/FPI
   DSFL3=SFL3
   SMALL=1.D-16*COMPAR
-
-  do I=1,MP1
-    X(I)=0.
-    XCOSEC(I)=0.
-    XP(I)=0.
-  enddo
-
-  IF(L > 1.AND.ABS(THETA) > 1.E-5) goto 3
+  DO 1 I=1,MP1
+  X(I)=0.
+  XCOSEC(I)=0.
+    1 XP(I)=0.
+  IF(L>1.AND.ABS(THETA)>1.E-5) GO TO 3
   X(1)=FCT
-  IF(L == 0) RETURN
+  IF(L==0) RETURN
   X(1)=CT*FCT
   X(2)=-ST*FCT/DSFL3
   XP(1)=-ST*FCT
   XP(2)=-.5D0*CT*FCT*DSFL3
-  IF(ABS(THETA) < 1.E-5) XCOSEC(2)=XP(2)
-  IF(ABS(THETA) >= 1.E-5) XCOSEC(2)=X(2)/ST
+  IF(ABS(THETA)<1.E-5) XCOSEC(2)=XP(2)
+  IF(ABS(THETA)>=1.E-5) XCOSEC(2)=X(2)/ST
   RETURN
-
- 3 X1=1.D0
+    3 X1=1.D0
   X2=CT
-
-  do I=2,L
-    X3=(dble(2*I-1)*CT*X2-dble(I-1)*X1)/dble(I)
-    X1=X2
-    X2=X3
-  enddo
-
+  DO 4 I=2,L
+  X3=(DFLOAT(2*I-1)*CT*X2-DFLOAT(I-1)*X1)/DFLOAT(I)
+  X1=X2
+    4 X2=X3
   COT=CT/ST
   COSEC=1./ST
   X3=X2*FCT
-  X2=dble(L)*(X1-CT*X2)*FCT/ST
+  X2=DFLOAT(L)*(X1-CT*X2)*FCT/ST
   X(1)=X3
   X(2)=X2
   sumval=X3*X3
   XP(1)=-X2
-  XP(2)=dble(L*(L+1))*X3-COT*X2
+  XP(2)=DFLOAT(L*(L+1))*X3-COT*X2
   X(2)=-X(2)/SFL3
   XCOSEC(2)=X(2)*COSEC
   XP(2)=-XP(2)/SFL3
   sumval=sumval+2.D0*X(2)*X(2)
-  IF(sumval-COMPAR > SMALL) RETURN
+  IF(sumval-COMPAR>SMALL) RETURN
   X1=X3
-  X2=-X2/DSQRT(dble(L*(L+1)))
+  X2=-X2/DSQRT(DFLOAT(L*(L+1)))
+  DO 5 I=3,MP1
+  K=I-1
+  F1=DSQRT(DFLOAT((L+I-1)*(L-I+2)))
+  F2=DSQRT(DFLOAT((L+I-2)*(L-I+3)))
+  XM=K
+  X3=-(2.D0*COT*(XM-1.D0)*X2+F2*X1)/F1
+  sumval=sumval+2.D0*X3*X3
+  IF(sumval-COMPAR>SMALL.AND.I/=LP1) RETURN
+  X(I)=X3
+  XCOSEC(I)=X(I)*COSEC
+  X1=X2
+  XP(I)=-(F1*X2+XM*COT*X3)
+    5 X2=X3
 
-  do I=3,MP1
-    K=I-1
-    F1=DSQRT(dble((L+I-1)*(L-I+2)))
-    F2=DSQRT(dble((L+I-2)*(L-I+3)))
-    XM=K
-    X3=-(2.D0*COT*(XM-1.D0)*X2+F2*X1)/F1
-    sumval=sumval+2.D0*X3*X3
-    IF(sumval-COMPAR > SMALL.AND.I /= LP1) RETURN
-    X(I)=X3
-    XCOSEC(I)=X(I)*COSEC
-    X1=X2
-    XP(I)=-(F1*X2+XM*COT*X3)
-    X2=X3
-  enddo
+  end
 
-  end subroutine legndr
 

@@ -115,7 +115,7 @@
       case(THREE_D_MODEL_S362ANI,THREE_D_MODEL_S362WMANI, &
            THREE_D_MODEL_S362ANI_PREM,THREE_D_MODEL_S29EA)
         ! the variables read are declared and stored in structure model_s362ani_par
-        call model_s362ani_broadcast(myrank,THREE_D_MODEL)
+!!!!!!! DK DK commented this out for now to fix a bug in s362ani        call model_s362ani_broadcast(myrank,THREE_D_MODEL)
 
       case(THREE_D_MODEL_PPM)
         ! Point Profile Models
@@ -369,6 +369,9 @@
   real(kind=4) :: xcolat,xlon,xrad,dvpv,dvph,dvsv,dvsh
   logical :: found_crust,suppress_mantle_extension
 
+!! DK DK put this back here for s362ani
+  character(len=128) modeldef
+
   ! initializes perturbation values
   dvs = ZERO
   dvp = ZERO
@@ -476,11 +479,26 @@
 
       case(THREE_D_MODEL_S362ANI,THREE_D_MODEL_S362WMANI, &
            THREE_D_MODEL_S362ANI_PREM,THREE_D_MODEL_S29EA)
+
         ! 3D Harvard models s362ani, s362wmani, s362ani_prem and s2.9ea
+
+!! DK DK put this back here for s362ani
+  if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI) then
+    modeldef='DATA/s362ani/S362ANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362WMANI) then
+    modeldef='DATA/s362ani/S362WMANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI_PREM) then
+    modeldef='DATA/s362ani/S362ANI_PREM'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S29EA) then
+    modeldef='DATA/s362ani/S2.9EA'
+  else
+    stop 'unknown 3D model in read_model_s362ani'
+  endif
+
         xcolat = sngl(theta*180.0d0/PI)
         xlon = sngl(phi*180.0d0/PI)
         xrad = sngl(r_used*R_EARTH_KM)
-        call model_s362ani_subshsv(xcolat,xlon,xrad,dvsh,dvsv,dvph,dvpv)
+        call model_s362ani_subshsv(xcolat,xlon,xrad,dvsh,dvsv,dvph,dvpv,modeldef)
 
         ! to use speed values from the 1D reference model but with 3D mesh variations
         if( USE_1D_REFERENCE ) then

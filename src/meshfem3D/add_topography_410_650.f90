@@ -28,7 +28,7 @@
   subroutine add_topography_410_650(myrank,xelm,yelm,zelm)
 
   use constants
-  use meshfem3D_par,only: R220,R400,R670,R771
+  use meshfem3D_par,only: R220,R400,R670,R771,THREE_D_MODEL
 
   implicit none
 
@@ -47,6 +47,9 @@
   double precision :: r,lat,lon,theta,phi
   double precision :: gamma
   double precision :: x,y,z
+
+!! DK DK put this back here for s362ani
+  character(len=128) modeldef
 
 ! note: adding topography to 410 and 660 strongly affects PcP, PKiKP, etc. phases,
 !       we leave it in and check whether the stretching makes simulation unstable
@@ -85,8 +88,21 @@
     ! stretching occurs between 220 and 770
     if(r > R220/R_EARTH .or. r < R771/R_EARTH) cycle
 
+!! DK DK put this back here for s362ani
+  if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI) then
+    modeldef='DATA/s362ani/S362ANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362WMANI) then
+    modeldef='DATA/s362ani/S362WMANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI_PREM) then
+    modeldef='DATA/s362ani/S362ANI_PREM'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S29EA) then
+    modeldef='DATA/s362ani/S2.9EA'
+  else
+    stop 'unknown 3D model in read_model_s362ani'
+  endif
+
     ! compute topography on 410 and 650 at current point
-    call model_s362ani_subtopo(xcolat,xlon,topo410out,topo650out)
+    call model_s362ani_subtopo(xcolat,xlon,topo410out,topo650out,modeldef)
 
     ! debug
     !print*,'topo410 / topo650: ',r,xcolat,xlon,topo410out,topo650out
@@ -132,7 +148,7 @@
   subroutine add_topography_410_650_gll(myrank,xstore,ystore,zstore,ispec,nspec)
 
   use constants
-  use meshfem3D_par,only: R220,R400,R670,R771
+  use meshfem3D_par,only: R220,R400,R670,R771,THREE_D_MODEL
 
   implicit none
 
@@ -149,6 +165,9 @@
   double precision :: r,lat,lon,theta,phi
   double precision :: gamma
   double precision :: x,y,z
+
+!! DK DK put this back here for s362ani
+  character(len=128) modeldef
 
 ! note: adding topography to 410 and 660 strongly affects PcP, PKiKP, etc. phases,
 !       we leave it in and check whether the stretching makes simulation unstable
@@ -186,8 +205,21 @@
           ! stretching occurs between 220 and 770
           if(r > R220/R_EARTH .or. r < R771/R_EARTH) cycle
 
+!! DK DK put this back here for s362ani
+  if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI) then
+    modeldef='DATA/s362ani/S362ANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362WMANI) then
+    modeldef='DATA/s362ani/S362WMANI'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S362ANI_PREM) then
+    modeldef='DATA/s362ani/S362ANI_PREM'
+  else if(THREE_D_MODEL  ==  THREE_D_MODEL_S29EA) then
+    modeldef='DATA/s362ani/S2.9EA'
+  else
+    stop 'unknown 3D model in read_model_s362ani'
+  endif
+
           ! compute topography on 410 and 650 at current point
-          call model_s362ani_subtopo(xcolat,xlon,topo410out,topo650out)
+          call model_s362ani_subtopo(xcolat,xlon,topo410out,topo650out,modeldef)
 
           ! non-dimensionalize the topography, which is in km
           ! positive for a depression, so change the sign for a perturbation in radius

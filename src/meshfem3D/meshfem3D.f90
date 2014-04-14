@@ -355,6 +355,11 @@
 !-------------------------------------------------------------------------------------------------
 !-------------------------------------------------------------------------------------------------
 
+!! DK DK save this value for s362ani, and initially set it to zero
+  integer :: ifknowmodel
+  common / ifknowmod / ifknowmodel
+  ifknowmodel = 0
+
   ! initialize the MPI communicator and start the NPROCTOT MPI processes.
   call init_mpi()
 
